@@ -1,0 +1,9 @@
+venv/
+example/
+build/
+*.out
+*.gif
+SecondTest.cpp
+OnlineTest.cpp
+TestMain.cpp
+colormap
