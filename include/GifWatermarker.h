@@ -18,7 +18,8 @@ public:
 
     GifFileType* loadGif(std::string fileName);
 
-    int watermark();
+    int embed();
+    int extract();
 };
 
 #endif /*_GIF_WATERMARKER_H_*/

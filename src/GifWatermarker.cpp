@@ -34,10 +34,10 @@ GifFileType* GifWatermarker::loadGif(std::string fileName)
     return gifFile;
 }
 
-int GifWatermarker::watermark()
+int GifWatermarker::embed()
 {
     std::string inputFile = "/home/quagga/git/Stegogifigogets/example/TestImage2x2.gif";
-    std::string watermarkFile = "/home/quagga/git/Stegogifigogets/example/4BlackPixels.gif";
+    std::string watermarkFile = "/home/quagga/git/Stegogifigogets/example/LowerRight.gif";
 
     GifFileType * orig = loadGif(inputFile);
     GifFileType * watermark = loadGif(watermarkFile);
@@ -75,13 +75,13 @@ int GifWatermarker::watermark()
             // For each pixel of width in the watermark
             for(int k = 0; k < watermark->SWidth; k++)
             {
+                std::cout << "j: " << j << "\tk: " << k << std::endl;
                 // The color map index of the current watermark pixel
                 int c = watermark->SavedImages[0].RasterBits[j * watermark->SWidth + k];
 
-                // If the color is black, we want a color key from the ones map
+                // If the color is black, we want a color key from the ones map (color value of the zeros map)
                 if(waterCM->Colors[c].Red == 0 && waterCM->Colors[c].Green == 0 && waterCM->Colors[c].Blue == 0)
                 {
-                    std::cout << "SWAPPING PIXEL FROM Zero to One" << std::endl;
                     // Get the color of the cover image's pixel in the same location
                     int pixInt = currentImage.RasterBits[j * watermark->SWidth + k];
 
@@ -91,13 +91,13 @@ int GifWatermarker::watermark()
                     // If it's in the zeros map (key), then we want to set the color index of it's partner in the ones map (value)
                     if(itr != partnerMaps.first->end())
                     {
+                        std::cout << "SWAPPING PIXEL FROM Zero to One" << std::endl;
                         currentImage.RasterBits[j * watermark->SWidth + k] = itr->second;
                     }
                 }
-                // If the color isn't black (a.k.a white), we want a color key from the zeros map
+                // If the color isn't black (a.k.a white), we want a color key from the zeros map (color value of the ones map)
                 else
                 {
-                    std::cout << "SWAPPING PIXEL FROM One to Zero" << std::endl;
                     // Get the color of the cover image's pixel in the same location
                     int pixInt = currentImage.RasterBits[j * watermark->SWidth + k];
 
@@ -107,6 +107,7 @@ int GifWatermarker::watermark()
                     // If it's in the ones map (key), then we want to set the color index of it's partner in the zeros map (value)
                     if(itr != partnerMaps.second->end())
                     {
+                        std::cout << "SWAPPING PIXEL FROM One to Zero" << std::endl;
                         currentImage.RasterBits[j * watermark->SWidth + k] = itr->second;
                     }
                 }
@@ -140,6 +141,114 @@ int GifWatermarker::watermark()
     EGifCloseFile(outGif, &error);
     DGifCloseFile(orig, &error);
     DGifCloseFile(watermark, &error);
+    return 0;
+}
+
+int GifWatermarker::extract()
+{
+    std::string inputFile = "/home/quagga/git/Stegogifigogets/example/Output.gif";
+
+    GifFileType * input = loadGif(inputFile);
+
+    int error;
+    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
+
+    ColorMapObject * globalCM = input->SColorMap;
+    if(globalCM)
+    {
+        partnerMaps = sortColorMap(globalCM);
+    }
+
+    GifFileType* outGif = EGifOpenFileName("/home/quagga/git/Stegogifigogets/example/Output_Watermark.gif", false, &error);
+    std::cout << "ERROR OPENING OUTPUT: " << outGif->Error << std::endl;
+    GifColorType white, black;
+    white.Red = 255;
+    white.Green = 255;
+    white.Blue = 255;
+    black.Red = 0;
+    black.Green = 0;
+    black.Blue = 0;
+
+
+    GifColorType colors[2];
+    GifColorType* c = colors;
+    c[0] = white;
+    c[1] = black;
+
+    outGif->SHeight = input->SHeight;
+    outGif->SWidth = input->SWidth;
+    outGif->SBackGroundColor = 0;
+    outGif->SColorMap = GifMakeMapObject(2, colors);
+
+    SavedImage gifImage[input->ImageCount];
+    for (size_t i = 0; i < input->ImageCount; i++)
+    {
+        gifImage[i].ImageDesc.Left = 0;
+        gifImage[i].ImageDesc.Top = 0;
+        gifImage[i].ImageDesc.Width = outGif->SWidth;
+        gifImage[i].ImageDesc.Height = outGif->SHeight;
+        gifImage[i].ImageDesc.Interlace = false;
+        gifImage[i].ImageDesc.ColorMap = nullptr;
+        gifImage[i].RasterBits = (GifByteType*)malloc(outGif->SWidth*outGif->SHeight);
+        gifImage[i].ExtensionBlockCount = 0;
+        gifImage[i].ExtensionBlocks = nullptr;
+        GifMakeSavedImage(outGif, &gifImage[i]);
+    }
+
+    // For each image in the GIF
+    for(int i = 0; i < input->ImageCount; ++i)
+    {
+        SavedImage currentImage = input->SavedImages[i];
+        ColorMapObject * currentCM = globalCM;
+
+        if(currentImage.ImageDesc.ColorMap)
+        {
+            currentCM = currentImage.ImageDesc.ColorMap;
+            partnerMaps = sortColorMap(currentImage.ImageDesc.ColorMap);
+        } 
+
+        // For each pixel of height in the input gif
+        for(int j = 0; j < input->SHeight; j++)
+        {
+            // For each pixel of width in the input gif
+            for(int k = 0; k < input->SWidth; k++)
+            {
+                std::cout << "j: " << j << "\tk: " << k << std::endl;
+
+                // The color map index of the current input gif pixel
+                int c = input->SavedImages[i].RasterBits[j * input->SWidth + k];
+
+                // Find this color key index in the zeros map
+                auto itr = partnerMaps.first->find(c);
+
+                // If it's in the zeros map (key), then we want to set the color to white, otherwise it's black
+                if(itr != partnerMaps.first->end())
+                {
+                    std::cout << "Setting white pixel" << std::endl;
+                    outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 0;
+                }
+                else
+                {
+                    std::cout << "Setting black pixel" << std::endl;
+                    outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 1;
+                }
+            }
+        }
+    }
+
+    if(EGifSpew(outGif) == GIF_ERROR)
+    {
+        std::cout << "Failed to spew Gif using EGifSpew(): " << input->Error << std::endl;
+        EGifCloseFile(outGif, &error);
+        DGifCloseFile(input, &error);
+        return input->Error;
+    }
+
+    EGifCloseFile(outGif, &error);
+    DGifCloseFile(input, &error);
+
+    delete partnerMaps.first;
+    delete partnerMaps.second;
     return 0;
 };
 
@@ -186,5 +295,5 @@ std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject*
 int main(int argc, char * argv[])
 {
     GifWatermarker wm;
-    return wm.watermark();
+    return wm.extract();
 }
