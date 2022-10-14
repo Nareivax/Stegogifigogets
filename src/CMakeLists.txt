@@ -1,7 +1,7 @@
-add_executable(stegogifigogets GifWatermarker.cpp)
+add_library(gifwater STATIC GifWatermarker.cpp)
 
-target_include_directories(stegogifigogets PUBLIC
-                            "${CMAKE_SOURCE_DIR}/include/")
+target_include_directories(gifwater PRIVATE
+                                    "${CMAKE_SOURCE_DIR}/include/stegogifigogets")
 
-target_link_libraries(stegogifigogets PUBLIC
-                        "/usr/lib/x86_64-linux-gnu/libgif.a")
+target_link_libraries(gifwater PRIVATE
+                                "/usr/lib/x86_64-linux-gnu/libgif.a")
