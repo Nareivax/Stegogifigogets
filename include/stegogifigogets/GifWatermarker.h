@@ -1,25 +1,30 @@
 #ifndef _GIF_WATERMARKER_H_
 #define _GIF_WATERMARKER_H_
 
-#include <string>
-#include <gif_lib.h>
+#ifndef NDEBUG
+    #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+#endif
 
+#include <string>
+#include <map>
+
+#include "spdlog/spdlog.h"
+#include "gif_lib.h"
 
 class GifWatermarker
 {
-private:
-    std::string inputFileName;
-
-    GifFileType* inputGif;
 
 public:
-    GifWatermarker(/* args */);
+    GifWatermarker();
     ~GifWatermarker();
 
-    GifFileType* loadGif(std::string fileName);
+    int embed(std::string inputFile, std::string watermarkFile, std::string outputFile);
+    int extract(std::string inputFile, std::string outputFile);
 
-    int embed();
-    int extract();
+private:
+    GifFileType* loadDGif(std::string fileName);
+    GifFileType* loadEGif(std::string fileName);
+    std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* inMap);
 };
 
 #endif /*_GIF_WATERMARKER_H_*/

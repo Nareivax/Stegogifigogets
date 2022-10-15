@@ -1,20 +1,18 @@
 #include <iostream>
-#include <map>
-#include <math.h>
+#include <cmath>
 
 #include "GifWatermarker.h"
 
-std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* cmap);
-
-GifWatermarker::GifWatermarker(/* args */)
+GifWatermarker::GifWatermarker()
 {
+    spdlog::set_level(spdlog::level::debug);
 }
 
 GifWatermarker::~GifWatermarker()
 {
 }
 
-GifFileType* GifWatermarker::loadGif(std::string fileName)
+GifFileType* GifWatermarker::loadDGif(std::string fileName)
 {
     int error;
     GifFileType* gifFile = DGifOpenFileName(fileName.c_str(), &error);
@@ -34,13 +32,63 @@ GifFileType* GifWatermarker::loadGif(std::string fileName)
     return gifFile;
 }
 
-int GifWatermarker::embed()
+GifFileType* GifWatermarker::loadEGif(std::string fileName)
 {
-    std::string inputFile = "/home/quagga/git/Stegogifigogets/example/biggertest.gif";
-    std::string watermarkFile = "/home/quagga/git/Stegogifigogets/example/LowerRight.gif";
+    int error;
+    GifFileType* gifFile = EGifOpenFileName(fileName.c_str(), true, &error);
+    if (!gifFile) 
+    {
+        std::cout << "Failed opening gif with EGifOpenFileName: " << error << std::endl;
+        return NULL;
+    }
+    
+    return gifFile;
+}
 
-    GifFileType * orig = loadGif(inputFile);
-    GifFileType * watermark = loadGif(watermarkFile);
+std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap(ColorMapObject* inMap)
+{
+
+    ColorMapObject cmap = *inMap;
+    
+    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
+    std::map<int, int>* zerosMap = new std::map<int, int>;
+    std::map<int, int>* onesMap = new std::map<int, int>;
+
+    // For each color until the second to last because they are being paired TODO: make sure it's an even colormap
+    for(int i = 0; i < cmap.ColorCount-1; i++)
+    {
+        GifColorType current = cmap.Colors[i];
+        float distance = 500; // Bigger than possible for 255, 255, 255 to 0, 0, 0
+
+        if(zerosMap->find(i) == zerosMap->end() && onesMap->find(i) == onesMap->end())
+        {
+            // For each other color that isn't current and hasn't been paired yet TODO: what happens if last pair is very far
+            for(int j = i+1; j < cmap.ColorCount; j++)
+            {
+                if(zerosMap->find(j) == zerosMap->end() && onesMap->find(j) == onesMap->end())
+                {
+                    GifColorType nextColor = cmap.Colors[j]; // The next color being checked
+                    
+                    float tempDistance = sqrt(pow((current.Red - nextColor.Red), 2) + pow((current.Blue - nextColor.Blue), 2) + pow((current.Green - nextColor.Green), 2));
+                    if(tempDistance < distance)
+                    {
+                        distance = tempDistance;
+                        (*zerosMap)[i] = j;
+                    }
+                }
+            }
+            (*onesMap)[zerosMap->find(i)->second] = i;
+        }
+    }
+    partnerMaps.first = zerosMap;
+    partnerMaps.second = onesMap;
+    return partnerMaps;
+}
+
+int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std::string outputFile)
+{
+    GifFileType * orig = loadDGif(inputFile);
+    GifFileType * watermark = loadDGif(watermarkFile);
 
     int error;
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
@@ -75,7 +123,7 @@ int GifWatermarker::embed()
             // For each pixel of width in the watermark
             for(int k = 0; k < watermark->SWidth; k++)
             {
-                std::cout << "j: " << j << "\tk: " << k << std::endl;
+                SPDLOG_DEBUG("image: {}\trow: {}\tcol: {}", i, j, k);
                 // The color map index of the current watermark pixel
                 int c = watermark->SavedImages[0].RasterBits[j * watermark->SWidth + k];
 
@@ -91,7 +139,7 @@ int GifWatermarker::embed()
                     // If it's in the zeros map (key), then we want to set the color index of it's partner in the ones map (value)
                     if(itr != partnerMaps.first->end())
                     {
-                        std::cout << "SWAPPING PIXEL FROM Zero to One" << std::endl;
+                        SPDLOG_DEBUG("SWAPPING PIXEL FROM Zero to One");
                         currentImage.RasterBits[j * orig->SWidth + k] = itr->second;
                     }
                 }
@@ -107,7 +155,7 @@ int GifWatermarker::embed()
                     // If it's in the ones map (key), then we want to set the color index of it's partner in the zeros map (value)
                     if(itr != partnerMaps.second->end())
                     {
-                        std::cout << "SWAPPING PIXEL FROM One to Zero" << std::endl;
+                        SPDLOG_DEBUG("SWAPPING PIXEL FROM One to Zero");
                         currentImage.RasterBits[j * orig->SWidth + k] = itr->second;
                     }
                 }
@@ -115,7 +163,7 @@ int GifWatermarker::embed()
         }
     }
 
-    GifFileType* outGif = EGifOpenFileName("/home/quagga/git/Stegogifigogets/example/Output.gif", false, &error);
+    GifFileType* outGif = loadEGif(outputFile);
 
     outGif->SavedImages = orig->SavedImages;
     outGif->SColorMap = orig->SColorMap;
@@ -140,11 +188,9 @@ int GifWatermarker::embed()
     return 0;
 }
 
-int GifWatermarker::extract()
+int GifWatermarker::extract(std::string inputFile, std::string outputFile)
 {
-    std::string inputFile = "/home/quagga/git/Stegogifigogets/example/Output.gif";
-
-    GifFileType * input = loadGif(inputFile);
+    GifFileType * input = loadDGif(inputFile);
 
     int error;
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
@@ -155,8 +201,7 @@ int GifWatermarker::extract()
         partnerMaps = sortColorMap(globalCM);
     }
 
-    GifFileType* outGif = EGifOpenFileName("/home/quagga/git/Stegogifigogets/example/Output_Watermark.gif", false, &error);
-    std::cout << "ERROR OPENING OUTPUT: " << outGif->Error << std::endl;
+    GifFileType* outGif = loadEGif(outputFile);
     
     // Defining the colors for the extracted image
     GifColorType white, black;
@@ -211,8 +256,7 @@ int GifWatermarker::extract()
             // For each pixel of width in the input gif
             for(int k = 0; k < input->SWidth; k++)
             {
-                //std::cout << "j: " << j << "\tk: " << k << std::endl;
-
+                SPDLOG_DEBUG("image: {}\trow: {}\tcol: {}", i, j, k);
                 // The color map index of the current input gif pixel
                 int c = input->SavedImages[i].RasterBits[j * input->SWidth + k];
 
@@ -222,12 +266,12 @@ int GifWatermarker::extract()
                 // If it's in the zeros map (key), then we want to set the color to white, otherwise it's black
                 if(itr != partnerMaps.first->end())
                 {
-                    //std::cout << "Setting white pixel" << std::endl;
+                    SPDLOG_DEBUG("Setting white pixel");
                     outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 0;
                 }
                 else
                 {
-                    //std::cout << "Setting black pixel" << std::endl;
+                    SPDLOG_DEBUG("Setting black pixel");
                     outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 1;
                 }
             }
@@ -246,43 +290,3 @@ int GifWatermarker::extract()
     delete partnerMaps.second;
     return 0;
 };
-
-std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* inMap)
-{
-
-    ColorMapObject cmap = *inMap;
-    
-    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
-    std::map<int, int>* zerosMap = new std::map<int, int>;
-    std::map<int, int>* onesMap = new std::map<int, int>;
-
-    // For each color until the second to last because they are being paired TODO: make sure it's an even colormap
-    for(int i = 0; i < cmap.ColorCount-1; i++)
-    {
-        GifColorType current = cmap.Colors[i];
-        float distance = 500; // Bigger than possible for 255, 255, 255 to 0, 0, 0
-
-        if(zerosMap->find(i) == zerosMap->end() && onesMap->find(i) == onesMap->end())
-        {
-            // For each other color that isn't current and hasn't been paired yet TODO: what happens if last pair is very far
-            for(int j = i+1; j < cmap.ColorCount; j++)
-            {
-                if(zerosMap->find(j) == zerosMap->end() && onesMap->find(j) == onesMap->end())
-                {
-                    GifColorType nextColor = cmap.Colors[j]; // The next color being checked
-                    
-                    float tempDistance = sqrt(pow((current.Red - nextColor.Red), 2) + pow((current.Blue - nextColor.Blue), 2) + pow((current.Green - nextColor.Green), 2));
-                    if(tempDistance < distance)
-                    {
-                        distance = tempDistance;
-                        (*zerosMap)[i] = j;
-                    }
-                }
-            }
-            (*onesMap)[zerosMap->find(i)->second] = i;
-        }
-    }
-    partnerMaps.first = zerosMap;
-    partnerMaps.second = onesMap;
-    return partnerMaps;
-}
