@@ -9,5 +9,9 @@ project(Stegogifigogets VERSION 0.2
                         DESCRIPTION "Gif Steganography Program"
                         LANGUAGES CXX)
 
+if(${CMAKE_BUILD_TYPE} MATCHES Debug)
+    add_compile_definitions(DEBUG=true)
+endif()
+
 add_subdirectory(src)
 add_subdirectory(apps)

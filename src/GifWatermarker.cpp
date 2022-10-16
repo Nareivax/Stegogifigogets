@@ -5,7 +5,9 @@
 
 GifWatermarker::GifWatermarker()
 {
+#ifdef DEBUG
     spdlog::set_level(spdlog::level::debug);
+#endif
 }
 
 GifWatermarker::~GifWatermarker()

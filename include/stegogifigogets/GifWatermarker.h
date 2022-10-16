@@ -1,7 +1,7 @@
 #ifndef _GIF_WATERMARKER_H_
 #define _GIF_WATERMARKER_H_
 
-#ifndef NDEBUG
+#ifdef DEBUG
     #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
 #endif
 
