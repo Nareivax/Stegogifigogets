@@ -12,7 +12,7 @@ enum Operation
 enum Error_List
 {
     OK = 0,
-    BAD_ARGS = 3
+    BAD_ARGS = 203
 };
 
 void printHelp()
@@ -34,7 +34,6 @@ int main(int argc, char * argv[])
     std::string wmFilePath;
     std::string outputPath;
     Operation op;
-
 
     // Parse the command line arguments
     if(argc == 1)

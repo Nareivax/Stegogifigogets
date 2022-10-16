@@ -25,6 +25,8 @@ private:
     GifFileType* loadDGif(std::string fileName);
     GifFileType* loadEGif(std::string fileName);
     std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* inMap);
+
+    int _error;
 };
 
 #endif /*_GIF_WATERMARKER_H_*/

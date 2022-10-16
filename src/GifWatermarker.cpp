@@ -16,19 +16,18 @@ GifWatermarker::~GifWatermarker()
 
 GifFileType* GifWatermarker::loadDGif(std::string fileName)
 {
-    int error;
-    GifFileType* gifFile = DGifOpenFileName(fileName.c_str(), &error);
+    GifFileType* gifFile = DGifOpenFileName(fileName.c_str(), &_error);
 
     if (!gifFile) 
     {
-        std::cout << "Failed opening gif with DGifOpenFileName: " << error << std::endl;
-        return NULL;
+        std::cout << "Failed opening gif with DGifOpenFileName: " << _error << std::endl;
+        return nullptr;
     }
     if (DGifSlurp(gifFile) == GIF_ERROR) 
     {
         std::cout << "Failed reading the rest of the gif with DGifSlurp(): " << gifFile->Error << std::endl;
-        DGifCloseFile(gifFile, &error);
-        return NULL;
+        DGifCloseFile(gifFile, &_error);
+        return nullptr;
     }
     
     return gifFile;
@@ -36,12 +35,11 @@ GifFileType* GifWatermarker::loadDGif(std::string fileName)
 
 GifFileType* GifWatermarker::loadEGif(std::string fileName)
 {
-    int error;
-    GifFileType* gifFile = EGifOpenFileName(fileName.c_str(), true, &error);
+    GifFileType* gifFile = EGifOpenFileName(fileName.c_str(), true, &_error);
     if (!gifFile) 
     {
-        std::cout << "Failed opening gif with EGifOpenFileName: " << error << std::endl;
-        return NULL;
+        std::cout << "Failed opening gif with EGifOpenFileName: " << _error << std::endl;
+        return nullptr;
     }
     
     return gifFile;
@@ -49,7 +47,6 @@ GifFileType* GifWatermarker::loadEGif(std::string fileName)
 
 std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap(ColorMapObject* inMap)
 {
-
     ColorMapObject cmap = *inMap;
     
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
@@ -90,9 +87,17 @@ std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap
 int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std::string outputFile)
 {
     GifFileType * orig = loadDGif(inputFile);
-    GifFileType * watermark = loadDGif(watermarkFile);
+    if(!orig)
+    {
+        return _error;
+    }
 
-    int error;
+    GifFileType * watermark = loadDGif(watermarkFile);
+    if(!watermark)
+    {
+        return _error;
+    }
+
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
 
     ColorMapObject * waterCM = watermark->SColorMap;
@@ -182,9 +187,9 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
     if(EGifSpew(outGif) == GIF_ERROR)
     {
         std::cout << "Failed to spew Gif using EGifSpew(): " << orig->Error << std::endl;
-        EGifCloseFile(outGif, &error);
-        DGifCloseFile(orig, &error);
-        DGifCloseFile(watermark, &error);
+        EGifCloseFile(outGif, &_error);
+        DGifCloseFile(orig, &_error);
+        DGifCloseFile(watermark, &_error);
         return orig->Error;
     }
     return 0;
@@ -193,8 +198,11 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
 int GifWatermarker::extract(std::string inputFile, std::string outputFile)
 {
     GifFileType * input = loadDGif(inputFile);
+    if(input->Error == GIF_ERROR)
+    {
+        return _error;
+    }
 
-    int error;
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
 
     ColorMapObject * globalCM = input->SColorMap;
@@ -283,8 +291,8 @@ int GifWatermarker::extract(std::string inputFile, std::string outputFile)
     if(EGifSpew(outGif) == GIF_ERROR)
     {
         std::cout << "Failed to spew Gif using EGifSpew(): " << input->Error << std::endl;
-        EGifCloseFile(outGif, &error);
-        DGifCloseFile(input, &error);
+        EGifCloseFile(outGif, &_error);
+        DGifCloseFile(input, &_error);
         return input->Error;
     }
 
