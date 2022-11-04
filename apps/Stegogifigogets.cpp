@@ -25,6 +25,7 @@ void printHelp()
                     \n\t\t--embed,     -e:\tFilepath for the input gif that will have a watermark embedded\
                     \n\t\t--extract,   -x:\tFilepath for the input gif to extract from\
                     \n\t\t--watermark, -w:\tFilepath for the watermark that is to be embedded\
+                    \n\t\t--key,       -k:\tKey for encrypting the watermark image (remember this!)\
                     \n\t\t--output,    -o:\tFilepath for the watermarked gif or extracted watermark" << std::endl;
 }
 
@@ -33,6 +34,7 @@ int main(int argc, char * argv[])
     std::string gifFilePath;
     std::string wmFilePath;
     std::string outputPath;
+    std::string keyphrase="0";
     Operation op;
 
     // Parse the command line arguments
@@ -89,6 +91,19 @@ int main(int argc, char * argv[])
             }
             i++;
         }
+        else if (!std::strcmp(argv[i], "--key") || !std::strcmp(argv[i], "-k"))
+        {
+            if(i+1 < argc)
+            {
+                keyphrase = argv[i+1];
+            }
+            else
+            {
+                std::cout << "Please specify an key after --key." << std::endl;
+                return BAD_ARGS;
+            }
+            i++;
+        }
         else if (!std::strcmp(argv[i], "--output") || !std::strcmp(argv[i], "-o"))
         {
             if(i+1 < argc)
@@ -128,7 +143,7 @@ int main(int argc, char * argv[])
             outputPath = outputPath.insert(pos, "_MARKED");
         }
 
-        return water.embed(gifFilePath, wmFilePath, outputPath);
+        return water.embed(gifFilePath, wmFilePath, outputPath, keyphrase);
     }
     else
     {
@@ -139,7 +154,7 @@ int main(int argc, char * argv[])
             pos = gifFilePath.find(".gif");
             outputPath = outputPath.insert(pos, "_EXTRACT");
         }
-        return water.extract(gifFilePath, outputPath);
+        return water.extract(gifFilePath, outputPath, keyphrase);
     }
 
 }

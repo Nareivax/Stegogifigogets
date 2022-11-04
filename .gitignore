@@ -7,4 +7,5 @@ build/
 SecondTest.cpp
 OnlineTest.cpp
 TestMain.cpp
+EncryptEg.cpp
 colormap
