@@ -98,26 +98,70 @@ void GifWatermarker::xorCrypt(GifFileType* inGif, std::string key)
     white.Green = 255;
     white.Blue = 255;
 
+    // Setting black and white manually to ensure they're set correctly
     inGif->SColorMap->Colors[0] = black;
     inGif->SColorMap->Colors[1] = white;
 
+    float x[numPixels+1];
+    // TODO: This is supposed to be between 3.57 and 4.00, I don't know why...
+    float mew = 3.59;
+
+    int initialVal = 0;
+
+    // Generate Initial value based on the key
+    for(size_t i = 0; i < key.size(); i++)
+    {
+        initialVal = initialVal ^ key[i];
+    }
+    // This helps keep values small, but is completely arbitrary and self imposed
+    x[0] = (float)initialVal/1000.00;
+
+    // Generate x values used for determining chaotic bits
+    for(size_t i = 1; i < numPixels+1; i++)
+    {
+        x[i] = mew*x[i-1]*(1-x[i-1]);
+    }
+
+    // Let's generate some chaotic bits
+    int chaoticBits[numPixels];
+
+    // Generate a chaotic bit for each pixel in the watermark
+    for (size_t i = 0; i < numPixels; i++)
+    {
+        int count = 1;
+        float value;
+
+        // Generate until the value is sufficiently big
+        while(x[i+1]*pow(10, count) <= pow(10, 6)) //TODO: The 6 here should be made an adjustable value or constant
+        {
+            value = (x[i+1]*pow(10, count));
+            count++;
+        }
+        // Take the LSB of the value as the chaotic bit
+        chaoticBits[i] = (int)value & 1;
+    }
+
+    // For each image in the watermark
     for (size_t i = 0; i < inGif->ImageCount; i++)
     {
+        // For each pixel in the image of the watermark
         for (size_t j = 0; j < numPixels; j++)
         {   
-            // XOR Encrypt/Decrypt is Modulo by 2 for even or odd lsb (i.e. black and white)
-            int value = (inGif->SavedImages[i].RasterBits[j] ^ key[j%key.size()])%2;
+            // XOR Encrypt/Decrypt the pixel, this is modulo divided to get the LSB
+            int value = (inGif->SavedImages[i].RasterBits[j] ^ chaoticBits[j])%2;
+
+            // If the LSB is 1 set the color to white
             if(value)
             {
                 inGif->SavedImages[i].RasterBits[j] = 1;
             }
+            // If the LSB is 0 set the color to black
             else
             {
                 inGif->SavedImages[i].RasterBits[j] = 0;
             }
         }
     }
-    
 }
 
 int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std::string outputFile, std::string keyphrase)
@@ -314,16 +358,16 @@ int GifWatermarker::extract(std::string inputFile, std::string outputFile, std::
                 // Find this color key index in the zeros map
                 auto itr = partnerMaps.first->find(c);
 
-                // If it's in the zeros map (key), then we want to set the color to white, otherwise it's black
+                // If it's in the zeros map (key), then we want to set the color to black, otherwise it's white
                 if(itr != partnerMaps.first->end())
-                {
-                    SPDLOG_DEBUG("Setting white pixel");
-                    outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 0;
-                }
-                else
                 {
                     SPDLOG_DEBUG("Setting black pixel");
                     outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 1;
+                }
+                else
+                {
+                    SPDLOG_DEBUG("Setting white pixel");
+                    outGif->SavedImages[i].RasterBits[j * input->SWidth + k] = 0;
                 }
             }
         }
