@@ -164,6 +164,27 @@ void GifWatermarker::xorCrypt(GifFileType* inGif, std::string key)
     }
 }
 
+void GifWatermarker::expandWatermark(int height, int width, GifFileType * watermark)
+{
+    // We can mess with the watermark RasterBits, since we don't save it
+    for (size_t i = 0; i < watermark->ImageCount; i++)
+    {
+        // TODO: Check for memory leak, I'm not sure if gif_lib will clean it up when we reassign the pointers
+        GifByteType * expanded = new unsigned char[height*width];
+
+        for (size_t j = 0; j < height; j++)
+        {
+            for (size_t k = 0; k < width; k++)
+            {
+                expanded[j * width + k] = watermark->SavedImages[i].RasterBits[j%watermark->SHeight * watermark->SWidth + k%watermark->SWidth];
+            }
+        }
+        watermark->SavedImages[i].RasterBits = expanded;
+    }
+    watermark->SWidth = width;
+    watermark->SHeight = height;
+}
+
 int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std::string outputFile, std::string keyphrase)
 {
     GifFileType * orig = loadDGif(inputFile);
@@ -178,6 +199,10 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
         return _error;
     }
 
+    if(orig->SHeight > watermark->SHeight || orig->SWidth > watermark->SWidth)
+    {
+        expandWatermark(orig->SHeight, orig->SWidth, watermark);
+    }
     xorCrypt(watermark, keyphrase);
 
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;

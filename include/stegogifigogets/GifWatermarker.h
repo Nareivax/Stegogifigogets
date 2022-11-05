@@ -26,6 +26,7 @@ private:
     GifFileType* loadEGif(std::string fileName);
     std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* inMap);
     void xorCrypt(GifFileType* inGif, std::string key);
+    void expandWatermark(int height, int width, GifFileType * watermark);
 
     int _error;
 };
