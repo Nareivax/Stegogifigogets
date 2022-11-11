@@ -7,6 +7,7 @@
 
 #include <string>
 #include <map>
+#include <vector>
 
 #include "spdlog/spdlog.h"
 #include "gif_lib.h"
@@ -24,9 +25,16 @@ public:
 private:
     GifFileType* loadDGif(std::string fileName);
     GifFileType* loadEGif(std::string fileName);
-    std::pair<std::map<int, int>*, std::map<int, int>*> sortColorMap(ColorMapObject* inMap);
+    void sortColorMap(ColorMapObject * inMap);
     void xorCrypt(GifFileType* inGif, std::string key);
+    void improveColorRedundancy(ColorMapObject * inMap);
     void expandWatermark(int height, int width, GifFileType * watermark);
+    void findUsedBlack(GifFileType* inGif);
+
+    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
+    std::vector<int> blackIndex;
+    std::vector<std::pair<int, float>> distanceSorted;
+    int numOfBlackPairs;
 
     int _error;
 };

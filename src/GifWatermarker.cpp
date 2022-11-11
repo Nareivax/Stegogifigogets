@@ -3,15 +3,25 @@
 
 #include "GifWatermarker.h"
 
+
+bool compareDistance(std::pair<int, float> dist1, std::pair<int, float> dist2);
+
 GifWatermarker::GifWatermarker()
 {
 #ifdef DEBUG
     spdlog::set_level(spdlog::level::debug);
 #endif
+
+    std::map<int, int>* zerosMap = new std::map<int, int>;
+    std::map<int, int>* onesMap = new std::map<int, int>;
+    partnerMaps.first = zerosMap;
+    partnerMaps.second = onesMap;
 }
 
 GifWatermarker::~GifWatermarker()
 {
+    delete partnerMaps.first;
+    delete partnerMaps.second;
 }
 
 GifFileType* GifWatermarker::loadDGif(std::string fileName)
@@ -45,13 +55,64 @@ GifFileType* GifWatermarker::loadEGif(std::string fileName)
     return gifFile;
 }
 
-std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap(ColorMapObject* inMap)
+void GifWatermarker::findUsedBlack(GifFileType* inGif)
+{
+    int repeater = -1;
+    for (size_t i = 0; i < inGif->ImageCount; i++)
+    {
+        for (size_t j = 0; j < inGif->SHeight; j++)
+        {
+            for (size_t k = 0; k < inGif->SWidth; k++)
+            {
+                auto pixInt = inGif->SavedImages[i].RasterBits[j * inGif->SWidth + k];
+                if(inGif->SColorMap->Colors[pixInt].Red == 0 &&\
+                    inGif->SColorMap->Colors[pixInt].Green == 0 &&\
+                    inGif->SColorMap->Colors[pixInt].Blue == 0 &&\
+                    !blackIndex.empty())
+                {
+                    if(repeater == -1)
+                    {
+                        repeater = pixInt;
+
+                        for (size_t m = 0; m < blackIndex.size(); m++)
+                        {
+                            if(blackIndex[m] == pixInt)
+                            {
+                                blackIndex.erase(blackIndex.begin() + m);
+                                numOfBlackPairs--;
+                                m--;
+                            }
+
+                            if(blackIndex[m] == (*partnerMaps.first)[pixInt])
+                            {
+                                blackIndex.erase(blackIndex.begin() + m);
+                                m--;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        inGif->SavedImages[i].RasterBits[j * inGif->SWidth + k] = repeater;
+                    }
+                }
+            }
+            
+        }
+        
+    }
+    
+}
+
+void GifWatermarker::sortColorMap(ColorMapObject* inMap)
 {
     ColorMapObject cmap = *inMap;
-    
-    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
-    std::map<int, int>* zerosMap = new std::map<int, int>;
-    std::map<int, int>* onesMap = new std::map<int, int>;
+
+    numOfBlackPairs = 0;
+
+    if(inMap->ColorCount > 1)
+    {
+        blackIndex.clear();
+    }
 
     // For each color until the second to last because they are being paired TODO: make sure it's an even colormap
     for(int i = 0; i < cmap.ColorCount-1; i++)
@@ -59,12 +120,12 @@ std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap
         GifColorType current = cmap.Colors[i];
         float distance = 500; // Bigger than possible for 255, 255, 255 to 0, 0, 0
 
-        if(zerosMap->find(i) == zerosMap->end() && onesMap->find(i) == onesMap->end())
+        if(partnerMaps.first->find(i) == partnerMaps.first->end() && partnerMaps.second->find(i) == partnerMaps.second->end())
         {
             // For each other color that isn't current and hasn't been paired yet TODO: what happens if last pair is very far
             for(int j = i+1; j < cmap.ColorCount; j++)
             {
-                if(zerosMap->find(j) == zerosMap->end() && onesMap->find(j) == onesMap->end())
+                if(partnerMaps.first->find(j) == partnerMaps.first->end() && partnerMaps.second->find(j) == partnerMaps.second->end())
                 {
                     GifColorType nextColor = cmap.Colors[j]; // The next color being checked
                     
@@ -72,16 +133,22 @@ std::pair<std::map<int, int>*, std::map<int, int>*> GifWatermarker::sortColorMap
                     if(tempDistance < distance)
                     {
                         distance = tempDistance;
-                        (*zerosMap)[i] = j;
+                        (*partnerMaps.first)[i] = j;
                     }
                 }
             }
-            (*onesMap)[zerosMap->find(i)->second] = i;
+            if(distance == 0 && cmap.Colors[i].Red == 0 && cmap.Colors[i].Green == 0 && cmap.Colors[i].Blue == 0)
+            {
+                blackIndex.push_back(i);
+                blackIndex.push_back(partnerMaps.first->find(i)->second);
+                numOfBlackPairs++;
+            }
+            (*partnerMaps.second)[partnerMaps.first->find(i)->second] = i;
+            distanceSorted.push_back(std::pair<int, float>(i, distance));
         }
     }
-    partnerMaps.first = zerosMap;
-    partnerMaps.second = onesMap;
-    return partnerMaps;
+
+    std::sort(distanceSorted.begin(), distanceSorted.end(), compareDistance);
 }
 
 void GifWatermarker::xorCrypt(GifFileType* inGif, std::string key)
@@ -164,6 +231,49 @@ void GifWatermarker::xorCrypt(GifFileType* inGif, std::string key)
     }
 }
 
+void GifWatermarker::improveColorRedundancy(ColorMapObject * inMap)
+{
+    int numColors = inMap->ColorCount;
+
+    // If there are 128 colors or less, this is easy we double the number of available colors (256 Max)
+    if(numColors <= 128)
+    {
+        // Double the number of color slots for the new color array
+        GifColorType * expandColors = new GifColorType[numColors*2];
+
+        for (size_t i = 0; i < numColors*2; i+=2)
+        {
+            expandColors[i] = inMap->Colors[i];
+            expandColors[i+1] = inMap->Colors[i];
+        }
+
+        inMap->ColorCount = numColors*2;
+        inMap->Colors = expandColors;        
+    }
+    //TODO: Check for the black pair that is actually used in the image and don't overwrite it.
+    else if(!blackIndex.empty())
+    {
+        for (int i = 0; i < (numOfBlackPairs); i++)
+        {
+            int index = distanceSorted[i].first;
+            int partnerIndex = (*partnerMaps.first)[index];
+            int black1 = blackIndex[i];
+            int black2 = blackIndex[i+1];
+
+            inMap->Colors[black1] = inMap->Colors[index];
+            (*partnerMaps.first).erase(black1);
+            (*partnerMaps.first)[index] = black1;
+            (*partnerMaps.second)[black1] = index;
+
+            inMap->Colors[black2] = inMap->Colors[partnerIndex];
+            (*partnerMaps.second).erase(black2);
+            (*partnerMaps.second)[partnerIndex] = black2;
+            (*partnerMaps.first)[black2] = partnerIndex;
+        }
+        
+    }
+}
+
 void GifWatermarker::expandWatermark(int height, int width, GifFileType * watermark)
 {
     // We can mess with the watermark RasterBits, since we don't save it
@@ -205,8 +315,6 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
     }
     xorCrypt(watermark, keyphrase);
 
-    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
-
     ColorMapObject * waterCM = watermark->SColorMap;
     if(watermark->SavedImages[0].ImageDesc.ColorMap)
     {
@@ -216,7 +324,9 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
     ColorMapObject * globalCM = orig->SColorMap;
     if(globalCM)
     {
-        partnerMaps = sortColorMap(globalCM);
+        sortColorMap(globalCM);
+        findUsedBlack(orig);
+        improveColorRedundancy(globalCM);
     }
 
     // For each image in the original GIF
@@ -227,8 +337,10 @@ int GifWatermarker::embed(std::string inputFile, std::string watermarkFile, std:
 
         if(currentImage.ImageDesc.ColorMap)
         {
+            SPDLOG_DEBUG("Frame {} uses a local color map.", i);
             currentCM = currentImage.ImageDesc.ColorMap;
-            partnerMaps = sortColorMap(currentImage.ImageDesc.ColorMap);
+            sortColorMap(currentCM);
+            improveColorRedundancy(currentCM);
         }
 
         // For each pixel of height in the watermark
@@ -313,12 +425,12 @@ int GifWatermarker::extract(std::string inputFile, std::string outputFile, std::
     //     return _error;
     // }
 
-    std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
-
     ColorMapObject * globalCM = input->SColorMap;
     if(globalCM)
     {
-        partnerMaps = sortColorMap(globalCM);
+        sortColorMap(globalCM);
+        findUsedBlack(input);
+        improveColorRedundancy(globalCM);
     }
 
     GifFileType* outGif = loadEGif(outputFile);
@@ -367,7 +479,8 @@ int GifWatermarker::extract(std::string inputFile, std::string outputFile, std::
         if(currentImage.ImageDesc.ColorMap)
         {
             currentCM = currentImage.ImageDesc.ColorMap;
-            partnerMaps = sortColorMap(currentImage.ImageDesc.ColorMap);
+            sortColorMap(currentCM);
+            improveColorRedundancy(currentCM);
         } 
 
         // For each pixel of height in the input gif
@@ -408,7 +521,10 @@ int GifWatermarker::extract(std::string inputFile, std::string outputFile, std::
         return input->Error;
     }
 
-    delete partnerMaps.first;
-    delete partnerMaps.second;
     return 0;
 };
+
+bool compareDistance(std::pair<int, float> dist1, std::pair<int, float> dist2)
+{
+    return (dist1.second < dist2.second);
+}
