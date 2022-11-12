@@ -9,7 +9,7 @@ project(Stegogifigogets VERSION 0.2
                         DESCRIPTION "Gif Steganography Program"
                         LANGUAGES CXX)
 
-if(${CMAKE_BUILD_TYPE} MATCHES Debug)
+if(${CMAKE_BUILD_TYPE} MATCHES debug)
     add_compile_definitions(DEBUG=true)
 endif()
 

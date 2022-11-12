@@ -12,6 +12,15 @@
 #include "spdlog/spdlog.h"
 #include "gif_lib.h"
 
+struct CompareGreaterColor
+{
+    bool operator()(GifColorType a, GifColorType b)
+    {
+        return ((((int)a.Red & 0xff) << 16) + (((int)a.Green & 0xff) << 8) + ((int)a.Blue & 0xff)) < \
+                ((((int)b.Red & 0xff) << 16) + (((int)b.Green & 0xff) << 8) + ((int)b.Blue & 0xff));
+    }
+};
+
 class GifWatermarker
 {
 
@@ -29,12 +38,20 @@ private:
     void xorCrypt(GifFileType* inGif, std::string key);
     void improveColorRedundancy(ColorMapObject * inMap);
     void expandWatermark(int height, int width, GifFileType * watermark);
-    void findUsedBlack(GifFileType* inGif);
+    void findDuplicateColors(SavedImage* inImage);
+    void findDuplicateColors(GifFileType* inGif);
 
     std::pair<std::map<int, int>*, std::map<int, int>*> partnerMaps;
-    std::vector<int> blackIndex;
+
+    std::map<int, int>* globalZeroes;
+    std::map<int, int>* globalOnes;
+    std::map<int, int>* localZeroes;
+    std::map<int, int>* localOnes;
+
+    std::map<GifColorType, std::vector<int>, CompareGreaterColor> duplicateColors;
     std::vector<std::pair<int, float>> distanceSorted;
-    int numOfBlackPairs;
+
+    GifColorType replaceable;
 
     int _error;
 };
